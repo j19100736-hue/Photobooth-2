@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>2000s Photo Booth</title>
+<style>
+  :root { --bg:#0e0e11; --card:#16161b; --text:#fafafa; --muted:#a4a4ad; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:920px;margin:0 auto;padding:16px;display:grid;gap:12px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  h1{font-size:18px;margin:0}
+  .panel{background:var(--card);border-radius:12px;padding:12px}
+  .grid{display:grid;gap:12px}
+  .controls{display:flex;flex-wrap:wrap;gap:8px}
+  button, input[type="date"], input[type="text"]{
+    background:#22232b;color:var(--text);border:1px solid #2b2d36;border-radius:10px;padding:10px 14px;font-size:15px
+  }
+  button:disabled{opacity:.5}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .toggle{display:flex;align-items:center;gap:8px}
+  label{font-size:13px;color:var(--muted)}
+  canvas, video {width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover}
+  .two{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:880px){ .two{grid-template-columns:1fr 1fr} }
+  .qrBox{display:flex;justify-content:center}
+  .hint{font-size:12px;color:var(--muted)}
+  .footer-note{font-size:12px;color:#c9c9d4}
+  @media print {
+    body{background:#fff;color:#000}
+    .wrap>*, header, .settings, .qrBox, .footer-note { display:none !important; }
+    #printout{display:block !important;}
+  }
+  #printout{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📸 2000s Photo Booth</h1>
+    <div class="row">
+      <button id="btnStart">Start Camera</button>
+      <button id="btnCapture" disabled>Capture</button>
+      <button id="btnRetake" disabled>Retake</button>
+      <button id="btnShare" disabled>Share</button>
+      <button id="btnPrint" disabled>Print</button>
+    </div>
+  </header>
+
+  <div class="two">
+    <div class="panel grid">
+      <video id="preview" playsinline muted></video>
+      <canvas id="frameCanvas"></canvas>
+      <div class="hint">Tip: Put your iPad on a tripod at face height. Lock Auto-Brightness in Settings → Accessibility → Display &amp; Text Size.</div>
+    </div>
+
+    <div class="panel grid settings">
+      <div class="grid">
+        <strong>Vintage Look</strong>
+        <div class="row">
+          <div class="toggle"><input type="checkbox" id="vignette" checked><label for="vignette">Vignette</label></div>
+          <div class="toggle"><input type="checkbox" id="grain" checked><label for="grain">Film Grain</label></div>
+          <div class="toggle"><input type="checkbox" id="border" checked><label for="border">Polaroid Border</label></div>
+          <div class="toggle"><input type="checkbox" id="dateOn" checked><label for="dateOn">Date Stamp</label></div>
+        </div>
+        <div class="row">
+          <label for="dateText">Date</label>
+          <input type="text" id="dateText" placeholder="MM/DD/YYYY">
+          <button id="btnToday">Today</button>
+        </div>
+        <div class="row">
+          <label for="albumUrl">Shared Album URL (for QR):</label>
+          <input type="text" id="albumUrl" placeholder="Paste your Google Photos or iCloud shared album link">
+          <button id="btnMakeQR">Show QR</button>
+        </div>
+        <div class="qrBox"><canvas id="qr"></canvas></div>
+        <div class="hint">Guests scan this QR to open your shared album and save their photos.</div>
+        <hr style="border-color:#2b2d36">
+        <div class="footer-note">
+          • **Printing** button uses AirPrint (e.g., Canon Selphy). Instax Mini Link isn’t AirPrint—tap **Share** and choose the Instax app to print.<br>
+          • **Share** opens the iOS Share Sheet (AirDrop, Messages, Photos, Files, Instax app, etc.).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden canvas used only for print layout -->
+  <canvas id="printout"></canvas>
+</div>
+
+<script>
+/* ====== Camera + Capture ====== */
+const video = document.getElementById('preview');
+const canvas = document.getElementById('frameCanvas');
+const ctx = canvas.getContext('2d');
+
+let stream = null;
+let snapshotBlob = null;
+
+const btnStart = document.getElementById('btnStart');
+const btnCapture = document.getElementById('btnCapture');
+const btnRetake = document.getElementById('btnRetake');
+const btnShare = document.getElementById('btnShare');
+const btnPrint = document.getElementById('btnPrint');
+
+const vignetteEl = document.getElementById('vignette');
+const grainEl = document.getElementById('grain');
+const borderEl = document.getElementById('border');
+const dateOnEl = document.getElementById('dateOn');
+const dateTextEl = document.getElementById('dateText');
+const btnToday = document.getElementById('btnToday');
+
+const qrCanvas = document.getElementById('qr');
+const albumUrlEl = document.getElementById('albumUrl');
+const btnMakeQR = document.getElementById('btnMakeQR');
+
+function setToday() {
+  const d = new Date();
+  // 2000s-style format: MM/DD/YYYY
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  dateTextEl.value = `${mm}/${dd}/${yyyy}`;
+}
+btnToday.addEventListener('click', setToday);
+setToday();
+
+btnStart.addEventListener('click', async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user", // front camera; switch to "environment" for back
+        width: { ideal: 1080 }, height: { ideal: 1440 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    resizeCanvas();
+    drawLive();
+    btnCapture.disabled = false;
+    btnRetake.disabled = true;
+    btnShare.disabled = true;
+    btnPrint.disabled = true;
+  } catch (e) {
+    alert("Camera access denied or unavailable. In Safari, allow camera permissions.");
+    console.error(e);
+  }
+});
+
+function resizeCanvas() {
+  // Maintain 3:4 portrait
+  const w = video.videoWidth || 1080;
+  const h = video.videoHeight || 1440;
+  canvas.width = 1080;
+  canvas.height = 1440;
+}
+
+let liveRAF;
+function drawLive() {
+  cancelAnimationFrame(liveRAF);
+  const loop = () => {
+    if (video.readyState >= 2) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      applyVintage(ctx, canvas);
+    }
+    liveRAF = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+btnCapture.addEventListener('click', async () => {
+  cancelAnimationFrame(liveRAF);
+  // Freeze current frame + effects already drawn
+  snapshotBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.92));
+  btnRetake.disabled = false;
+  btnShare.disabled = false;
+  btnPrint.disabled = false;
+});
+
+btnRetake.addEventListener('click', () => {
+  snapshotBlob = null;
+  drawLive();
+  btnShare.disabled = true;
+  btnPrint.disabled = true;
+});
+
+/* ====== Effects ====== */
+function applyVintage(ctx, canvas) {
+  // Draw current video already placed
+  const w = canvas.width, h = canvas.height;
+
+  // Subtle tone curve (simulate 2000s disposable warmth)
+  const img = ctx.getImageData(0,0,w,h);
+  const d = img.data;
+  for (let i=0;i<d.length;i+=4){
+    // warm highlights, slight green shadows
+    d[i]   = Math.min(255, d[i]*1.03 + 3);     // R
+    d[i+1] = Math.min(255, d[i+1]*0.98 + 2);   // G
+    d[i+2] = Math.min(255, d[i+2]*0.96 + 1);   // B
+  }
+  ctx.putImageData(img,0,0);
+
+  if (grainEl.checked) addGrain(ctx,w,h, 20, 0.12);
+  if (vignetteEl.checked) addVignette(ctx,w,h);
+  if (borderEl.checked) polaroidBorder(ctx,w,h);
+  if (dateOnEl.checked) drawDateStamp(ctx,w,h, dateTextEl.value || '04/29/2004');
+}
+
+function addGrain(ctx,w,h, intensity=20, alpha=0.12) {
+  const g = ctx.createImageData(w,h);
+  const d = g.data;
+  for (let i=0;i<d.length;i+=4){
+    const n = 128 + (Math.random()*2-1)*intensity;
+    d[i]=d[i+1]=d[i+2]=n;
+    d[i+3]=alpha*255;
+  }
+  ctx.putImageData(g,0,0);
+}
+
+function addVignette(ctx,w,h){
+  const grad = ctx.createRadialGradient(w/2,h/2, Math.min(w,h)*0.2, w/2,h/2, Math.max(w,h)*0.7);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+}
+
+function polaroidBorder(ctx,w,h){
+  // Draw white matte with thicker bottom margin
+  const border = Math.round(w*0.04);
+  const bottom = Math.round(h*0.12);
+  ctx.save();
+  // Create framed output
+  const temp = document.createElement('canvas');
+  temp.width = w; temp.height = h + bottom;
+  const tctx = temp.getContext('2d');
+
+  // White card
+  tctx.fillStyle = '#fff';
+  tctx.fillRect(0,0,w,h+bottom);
+
+  // Inner photo area
+  tctx.save();
+  tctx.beginPath();
+  tctx.rect(border,border, w-2*border, h-2*border);
+  tctx.clip();
+  tctx.drawImage(canvas,0,0);
+  tctx.restore();
+
+  // Copy back
+  ctx.clearRect(0,0,w,h);
+  ctx.drawImage(temp, 0, -Math.round(bottom*0.5)); // shift to keep portrait aspect
+  ctx.restore();
+}
+
+function drawDateStamp(ctx,w,h, text){
+  ctx.save();
+  ctx.font = `${Math.round(w*0.045)}px 'Courier New', Courier, monospace`;
+  ctx.fillStyle = 'rgba(255, 210, 50, 0.96)'; // amber-ish LED
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6;
+  ctx.textAlign = 'right';
+  ctx.fillText(text, w - Math.round(w*0.07), h - Math.round(h*0.08));
+  ctx.restore();
+}
+
+/* ====== Share & Print ====== */
+btnShare.addEventListener('click', async () => {
+  try{
+    const file = new File([snapshotBlob], 'booth.jpg', {type:'image/jpeg'});
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      await navigator.share({
+        files:[file],
+        title:'Photo Booth',
+        text:'Your 2000s photo 📸'
+      });
+    } else {
+      // Fallback: download to Photos (user taps “Download Image” then adds to Photos)
+      const url = URL.createObjectURL(snapshotBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'booth.jpg';
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('Saved image. Use the Instax or Photos app to print/share.');
+    }
+  } catch(e){
+    console.error(e);
+  }
+});
+
+btnPrint.addEventListener('click', async () => {
+  // Prepare a full-bleed printable canvas (4x6 layout would require CSS media; here we just print the image)
+  const printCanvas = document.getElementById('printout');
+  const img = new Image();
+  img.onload = () => {
+    printCanvas.width = img.width;
+    printCanvas.height = img.height;
+    const pctx = printCanvas.getContext('2d');
+    pctx.drawImage(img,0,0);
+    printCanvas.style.display='block';
+    window.print();
+    setTimeout(()=>printCanvas.style.display='none', 1000);
+  };
+  img.src = URL.createObjectURL(snapshotBlob);
+});
+
+/* ====== QR (Static album link) ====== */
+btnMakeQR.addEventListener('click', () => {
+  const url = (albumUrlEl.value || '').trim();
+  if(!url){ alert('Paste your shared album link first.'); return; }
+  drawQR(qrCanvas, url);
+});
+
+/* Tiny QR generator (no external libs) – based on qrcode-generator (level L) – minimalistic */
+(function(){
+  // Super-minified QR encoder replacement (restricted): use a simple API that draws a QR via Google Charts fallback if offline
+  // Because full QR encoding is large, we use a light trick:
+  window.drawQR = (canvas, text) => {
+    const size = Math.min(360, Math.max(180, canvas.parentElement.clientWidth - 40));
+    canvas.width = size; canvas.height = size;
+    // Use offscreen <

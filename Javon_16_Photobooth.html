@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Javon’s 16th Birthday Photobooth</title>
+<style>
+  :root {
+    --bg:#0e0f14;
+    --card:#141823;
+    --text:#f6f7fb;
+    --muted:#a7b0c4;
+    --accent:#4da3ff; /* subtle blue */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:12px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand h1{font-size:20px;margin:0;line-height:1.1}
+  .brand .badge{background:rgba(77,163,255,.2);color:#cfe6ff;border:1px solid rgba(77,163,255,.4);padding:4px 8px;border-radius:999px;font-size:12px}
+  .panel{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:12px;box-shadow:0 8px 20px rgba(0,0,0,.25)}
+  .grid{display:grid;gap:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button, input[type="text"]{
+    background:#1a2130;color:var(--text);border:1px solid #2a3347;border-radius:12px;
+    padding:10px 14px;font-size:15px
+  }
+  button.primary{border-color:var(--accent);box-shadow:0 0 0 1px rgba(77,163,255,.25) inset}
+  button:disabled{opacity:.6}
+  label{font-size:13px;color:var(--muted)}
+  .toggle{display:flex;align-items:center;gap:8px}
+  .two{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:920px){ .two{grid-template-columns:1.2fr .8fr} }
+  video, canvas{width:100%;border-radius:14px;background:#000;aspect-ratio:3/4;object-fit:cover}
+  .hint{font-size:12px;color:var(--muted)}
+  .qrBox{display:flex;justify-content:center}
+  .titleOverlay{
+    position:relative;text-align:center;margin-top:-10px;margin-bottom:4px;
+    color:#cfe6ff;font-weight:600;letter-spacing:.2px
+  }
+  .titleOverlay small{display:block;color:#93bff8;font-weight:500;margin-top:2px}
+  .pill{background:rgba(77,163,255,.18);color:#cfe6ff;border:1px solid rgba(77,163,255,.4);
+        padding:6px 10px;border-radius:999px;font-size:12px}
+  @media print { body{background:#fff;color:#000} .no-print{display:none !important;} #printout{display:block !important;} }
+  #printout{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="panel">
+    <div class="brand">
+      <div style="width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 16px var(--accent)"></div>
+      <h1>Javon’s 16th Birthday</h1>
+      <span class="badge">2000s Photo Booth</span>
+    </div>
+    <div class="row no-print">
+      <button id="btnStart" class="primary">Start Camera</button>
+      <button id="btnCapture" disabled>Capture</button>
+      <button id="btnRetake" disabled>Retake</button>
+      <button id="btnShare" disabled>Share</button>
+      <button id="btnPrint" disabled>Print</button>
+    </div>
+  </header>
+
+  <div class="two">
+    <div class="panel grid">
+      <div class="titleOverlay">Strike a pose 📸
+        <small>Vintage filter + date stamp applied automatically</small>
+      </div>
+      <video id="preview" playsinline muted></video>
+      <canvas id="frameCanvas"></canvas>
+      <div class="hint no-print">Tip: Put your iPad on a tripod at face height. Lock Auto-Brightness in Settings → Accessibility → Display &amp; Text Size.</div>
+    </div>
+
+    <div class="panel grid no-print">
+      <div><strong style="color:#cfe6ff">Look & Settings</strong></div>
+      <div class="row">
+        <span class="pill">Light Blue Theme</span>
+        <div class="toggle"><input type="checkbox" id="vignette" checked><label for="vignette">Vignette</label></div>
+        <div class="toggle"><input type="checkbox" id="grain" checked><label for="grain">Film Grain</label></div>
+        <div class="toggle"><input type="checkbox" id="border" checked><label for="border">Polaroid Border</label></div>
+        <div class="toggle"><input type="checkbox" id="dateOn" checked><label for="dateOn">Date Stamp</label></div>
+      </div>
+      <div class="row">
+        <label for="dateText">Date text</label>
+        <input type="text" id="dateText" placeholder="MM/DD/YYYY" style="min-width:160px">
+        <button id="btnToday">Today</button>
+      </div>
+      <div class="row">
+        <label for="albumUrl">Shared album URL (for QR display):</label>
+        <input type="text" id="albumUrl" placeholder="Paste Google Photos or iCloud link" style="flex:1;min-width:220px">
+        <button id="btnMakeQR">Show QR</button>
+      </div>
+      <div class="qrBox"><canvas id="qr" width="240" height="240" style="background:#fff;border-radius:12px;padding:8px"></canvas></div>
+      <div class="hint">Guests can scan the QR to open your shared album and save their photos. (Optional)</div>
+      <hr style="border-color:#2a3347;width:100%">
+      <div class="hint">
+        • <b>Share</b> opens the iOS Share Sheet (AirDrop, Messages, Photos, Files, <i>Instax Mini Link</i> app, etc.).<br>
+        • <b>Print</b> uses AirPrint (e.g., Canon Selphy). Instax Mini Link is not AirPrint—use <b>Share → Instax app</b> to print instantly.
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden canvas used only for print layout -->
+  <canvas id="printout"></canvas>
+</div>
+
+<script>
+// Elements
+const video = document.getElementById('preview');
+const canvas = document.getElementById('frameCanvas');
+const ctx = canvas.getContext('2d');
+let raf;
+let stream = null;
+let snapshotBlob = null;
+
+const btnStart = document.getElementById('btnStart');
+const btnCapture = document.getElementById('btnCapture');
+const btnRetake = document.getElementById('btnRetake');
+const btnShare = document.getElementById('btnShare');
+const btnPrint = document.getElementById('btnPrint');
+
+const vignetteEl = document.getElementById('vignette');
+const grainEl = document.getElementById('grain');
+const borderEl = document.getElementById('border');
+const dateOnEl = document.getElementById('dateOn');
+const dateTextEl = document.getElementById('dateText');
+const btnToday = document.getElementById('btnToday');
+
+const qrCanvas = document.getElementById('qr');
+const albumUrlEl = document.getElementById('albumUrl');
+const btnMakeQR = document.getElementById('btnMakeQR');
+
+// Defaults
+setToday();
+function setToday() {
+  const d = new Date();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  dateTextEl.value = `${mm}/${dd}/${yyyy}`;
+}
+btnToday.addEventListener('click', setToday);
+
+// Start camera
+btnStart.addEventListener('click', async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:'user', width:{ideal:1080}, height:{ideal:1440} },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    // size canvas
+    canvas.width = 1080; canvas.height = 1440;
+    drawLive();
+    btnCapture.disabled = false;
+    btnRetake.disabled = true;
+    btnShare.disabled = true;
+    btnPrint.disabled = true;
+  } catch (e) {
+    alert('Camera access denied or unavailable. In Safari, allow camera permissions.');
+    console.error(e);
+  }
+});
+
+function drawLive(){
+  cancelAnimationFrame(raf);
+  const loop = () => {
+    if(video.readyState >= 2){
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      applyVintage(ctx, canvas);
+    }
+    raf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+// Capture
+btnCapture.addEventListener('click', async () => {
+  cancelAnimationFrame(raf);
+  snapshotBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.92));
+  btnRetake.disabled = false;
+  btnShare.disabled = false;
+  btnPrint.disabled = false;
+});
+
+btnRetake.addEventListener('click', () => {
+  snapshotBlob = null;
+  drawLive();
+  btnShare.disabled = true;
+  btnPrint.disabled = true;
+});
+
+// Effects
+function applyVintage(ctx, canvas){
+  const w = canvas.width, h = canvas.height;
+
+  // warm tone shift
+  const img = ctx.getImageData(0,0,w,h);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    d[i]   = Math.min(255, d[i]*1.03 + 3);   // R
+    d[i+1] = Math.min(255, d[i+1]*0.985 + 1);// G
+    d[i+2] = Math.min(255, d[i+2]*0.96 + 2); // B
+  }
+  ctx.putImageData(img,0,0);
+
+  if (grainEl.checked) addGrain(ctx,w,h, 18, 0.12);
+  if (vignetteEl.checked) addVignette(ctx,w,h);
+  if (borderEl.checked) polaroidBorder(ctx,w,h);
+  if (dateOnEl.checked) drawDateStamp(ctx,w,h, dateTextEl.value || '04/29/2004');
+  // Title banner (subtle blue) – bottom margin area
+  drawEventTitle(ctx,w,h,"Javon’s 16th Birthday");
+}
+
+function addGrain(ctx,w,h,intensity=20,alpha=0.12){
+  const g = ctx.createImageData(w,h); const d = g.data;
+  for (let i=0;i<d.length;i+=4){
+    const n = 128 + (Math.random()*2-1)*intensity;
+    d[i]=d[i+1]=d[i+2]=n; d[i+3]=alpha*255;
+  }
+  ctx.putImageData(g,0,0);
+}
+function addVignette(ctx,w,h){
+  const grad = ctx.createRadialGradient(w/2,h/2, Math.min(w,h)*0.2, w/2,h/2, Math.max(w,h)*0.75);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+}
+function polaroidBorder(ctx,w,h){
+  const border = Math.round(w*0.04);
+  const bottom = Math.round(h*0.12);
+  ctx.save();
+  const temp = document.createElement('canvas');
+  temp.width = w; temp.height = h + bottom;
+  const tctx = temp.getContext('2d');
+  tctx.fillStyle = '#fff'; tctx.fillRect(0,0,w,h+bottom);
+  tctx.save();
+  tctx.beginPath();
+  tctx.rect(border,border, w-2*border, h-2*border);
+  tctx.clip();
+  tctx.drawImage(canvas,0,0);
+  tctx.restore();
+  ctx.clearRect(0,0,w,h);
+  ctx.drawImage(temp, 0, -Math.round(bottom*0.5));
+  ctx.restore();
+}
+function drawDateStamp(ctx,w,h,text){
+  ctx.save();
+  ctx.font = `${Math.round(w*0.045)}px 'Courier New', Courier, monospace`;
+  ctx.fillStyle = 'rgba(255,210,50,0.96)';
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6;
+  ctx.textAlign = 'right';
+  ctx.fillText(text, w - Math.round(w*0.07), h - Math.round(h*0.08));
+  ctx.restore();
+}
+function drawEventTitle(ctx,w,h,title){
+  // Light blue emboss text on the thick bottom area if border is on, else place slightly above bottom
+  ctx.save();
+  ctx.font = `${Math.round(w*0.06)}px 'Arial Black', Impact, system-ui`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = 'rgba(77,163,255,0.95)';
+  ctx.fillText(title, Math.round(w/2), h - Math.round(h*0.03));
+  ctx.restore();
+}
+
+// Share
+btnShare.addEventListener('click', async () => {
+  try {
+    if (!snapshotBlob) return;
+    const file = new File([snapshotBlob], 'booth.jpg', {type:'image/jpeg'});
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      await navigator.share({ files:[file], title:'Javon’s 16th Birthday', text:'Your 2000s photo 📸' });
+    } else {
+      // Fallback: download
+      const url = URL.createObjectURL(snapshotBlob);
+      const a = document.createElement('a'); a.href = url; a.download = 'booth.jpg'; a.click();
+      URL.revokeObjectURL(url);
+      alert('Saved image. You can open it in Photos or the Instax app to print.');
+    }
+  } catch(e){ console.error(e); }
+});
+
+// Print (AirPrint)
+btnPrint.addEventListener('click', () => {
+  if (!snapshotBlob) return;
+  const printCanvas = document.getElementById('printout');
+  const img = new Image();
+  img.onload = () => {
+    printCanvas.width = img.width;
+    printCanvas.height = img.height;
+    const pctx = printCanvas.getContext('2d');
+    pctx.drawImage(img,0,0);
+    printCanvas.style.display='block';
+    window.print();
+    setTimeout(()=>printCanvas.style.display='none', 800);
+  };
+  img.src = URL.createObjectURL(snapshotBlob);
+});
+
+// --- Minimal QR via Google Charts (needs internet). If offline, draw text placeholder.
+btnMakeQR.addEventListener('click', () => {
+  const url = (albumUrlEl.value || '').trim();
+  const qctx = qrCanvas.getContext('2d');
+  qctx.clearRect(0,0,qrCanvas.width,qrCanvas.height);
+  if(!url){
+    qctx.fillStyle = '#222'; qctx.fillRect(0,0,qrCanvas.width,qrCanvas.height);
+    qctx.fillStyle = '#fff'; qctx.font = '14px system-ui'; qctx.textAlign='center';
+    qctx.fillText('Paste album link', qrCanvas.width/2, qrCanvas.height/2);
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { qctx.drawImage(img,0,0,qrCanvas.width,qrCanvas.height); };
+  img.onerror = () => {
+    qctx.fillStyle = '#222'; qctx.fillRect(0,0,qrCanvas.width,qrCanvas.height);
+    qctx.fillStyle = '#fff'; qctx.font = '12px system-ui'; qctx.textAlign='center';
+    qctx.fillText('QR failed. Show link:', qrCanvas.width/2, qrCanvas.height/2-10);
+    qctx.fillText(url, qrCanvas.width/2, qrCanvas.height/2+10);
+  };
+  const api = 'https://chart.googleapis.com/chart?cht=qr&chs=240x240&chl=' + encodeURIComponent(url);
+  img.src = api;
+});
+</script>
+</body>
+</html>
